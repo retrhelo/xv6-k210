@@ -94,6 +94,8 @@ printf(char *fmt, ...)
     if(c == 0)
       break;
     switch(c){
+	case 'u': // unsigned integer 
+		// slide down 
     case 'd':
       printint(va_arg(ap, int), 10, 1);
       break;
@@ -109,6 +111,29 @@ printf(char *fmt, ...)
       for(; *s; s++)
         sbi_console_putchar(*s);
       break;
+	case 'l': 	// print wide characters 
+		if ('s' == (c = fmt[++i])) {
+			wchar *tmp = va_arg(ap, wchar*);
+			if (0 == tmp) {
+				for (char *t = "(null)"; *t; t++) 
+					sbi_console_putchar(*t);
+			}
+			else {
+				while (*tmp) {
+					sbi_console_putchar((char)(*tmp & 0xff));
+					tmp ++;
+				}
+			}
+		}
+		else {	// invalid % sequence 
+			sbi_console_putchar('%');
+			sbi_console_putchar('l');
+			sbi_console_putchar(c);
+		}
+		break;
+	case 'c': 
+		sbi_console_putchar(va_arg(ap, int));
+		break;
     case '%':
       sbi_console_putchar('%');
       break;

@@ -192,11 +192,6 @@ void            plicinithart(void);
 int             plic_claim(void);
 void            plic_complete(int);
 
-// virtio_disk.c
-void            virtio_disk_init(void);
-void            virtio_disk_rw(struct buf *, int);
-void            virtio_disk_intr(void);
-
 // logo.c
 void            print_logo(void);
 
@@ -204,6 +199,9 @@ void            print_logo(void);
 void            test_kalloc(void);
 void            test_vm(unsigned long);
 void            test_sdcard(void);
+
+void 			test_disk(void);
+
 // spi.c
 // void spi_init(spi_device_num_t spi_num, spi_work_mode_t work_mode, spi_frame_format_t frame_format,
 //               uint64 data_bit_length, uint32 endian);

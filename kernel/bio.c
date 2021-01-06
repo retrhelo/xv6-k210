@@ -20,10 +20,12 @@
 #include "include/spinlock.h"
 #include "include/sleeplock.h"
 #include "include/riscv.h"
-#include "include/defs.h"
 #include "include/fs.h"
-#include "include/buf.h"
 #include "include/sdcard.h"
+
+#include "include/disk.h"
+
+#include "include/printf.h"
 
 struct {
   struct spinlock lock;
@@ -59,7 +61,7 @@ binit(void)
 // If not found, allocate a buffer.
 // In either case, return locked buffer.
 static struct buf*
-bget(uint dev, uint blockno)
+bget(uint dev, uint sectorno)
 {
   struct buf *b;
 
@@ -67,10 +69,10 @@ bget(uint dev, uint blockno)
 
   // Is the block already cached?
   for(b = bcache.head.next; b != &bcache.head; b = b->next){
-    if(b->dev == dev && b->blockno == blockno){
+    if(b->dev == dev && b->sectorno == sectorno){
       b->refcnt++;
       release(&bcache.lock);
-      acquiresleep(&b->lock);
+      //acquiresleep(&b->lock);
       return b;
     }
   }
@@ -80,56 +82,35 @@ bget(uint dev, uint blockno)
   for(b = bcache.head.prev; b != &bcache.head; b = b->prev){
     if(b->refcnt == 0) {
       b->dev = dev;
-      b->blockno = blockno;
+      b->sectorno = sectorno;
       b->valid = 0;
       b->refcnt = 1;
       release(&bcache.lock);
-      acquiresleep(&b->lock);
+      //acquiresleep(&b->lock);
       return b;
     }
   }
   panic("bget: no buffers");
+  return 0;
 }
 
-// Return a locked buf with the contents of the indicated block.
-struct buf*
-bread(uint dev, uint blockno)
-{
-  printf("run in bread\n");
-  struct buf *b;
+struct buf* 
+bread(uint dev, uint sectorno) {
+	struct buf *b;
 
-  b = bget(dev, blockno);
-  if(!b->valid) {
-    #ifdef QEMU
-    virtio_disk_rw(b, 0);
-    #else
-    memset(b->data, 0, sizeof(b->data));
-    uint64 sector = b->blockno * (BSIZE / 512);
-    if(sd_read_sector(b->data, sector, BSIZE / 512)) {
-      panic("[bread]bread err\n");
-    } else {
-      printf("[bread]read data: %s\n", b->data);
-    }
-    #endif
-    b->valid = 1;
-  }
-  return b;
+	b = bget(dev, sectorno);
+	if (!b->valid) {
+		disk_read(b);
+		b->valid = 1;
+	}
+
+	return b;
 }
 
-// Write b's contents to disk.  Must be locked.
-void
-bwrite(struct buf *b)
-{
-  if(!holdingsleep(&b->lock))
-    panic("bwrite");
-  #ifdef QEMU
-  virtio_disk_rw(b, 1);
-  #else
-  uint64 sector = b->blockno * (BSIZE / 512);
-  if(sd_write_sector(b->data, sector, sizeof(b->data))) {
-    panic("[bio.c]bwrite err\n");
-  }
-  #endif
+// Write b's contents to disk
+void 
+bwrite(struct buf *b) {
+	disk_write(b);
 }
 
 // Release a locked buffer.
@@ -137,8 +118,8 @@ bwrite(struct buf *b)
 void
 brelse(struct buf *b)
 {
-  if(!holdingsleep(&b->lock))
-    panic("brelse");
+  //if(!holdingsleep(&b->lock))
+  //  panic("brelse");
 
   releasesleep(&b->lock);
 

@@ -1,4 +1,3 @@
-
 #include "include/types.h"
 #include "include/param.h"
 #include "include/memlayout.h"
@@ -7,7 +6,6 @@
 #include "include/proc.h"
 #include "include/sbi.h"
 #include "include/defs.h"
-
 
 struct spinlock tickslock;
 uint ticks;
@@ -97,6 +95,8 @@ usertrap(void)
 void
 usertrapret(void)
 {
+	// the yield() may have caused some traps to occur, 
+	// so restore trap registers for use by kernelvec.S's sepc instruction. 
   struct proc *p = myproc();
 
   // we're about to switch the destination of traps from
@@ -140,37 +140,35 @@ usertrapret(void)
 // interrupts and exceptions from kernel code go here via kernelvec,
 // on whatever the current kernel stack is.
 void 
-kerneltrap()
-{
-  // printf("run in kerneltrap...\n");
-  int which_dev = 0;
-  uint64 sepc = r_sepc();
-  uint64 sstatus = r_sstatus();
-  uint64 scause = r_scause();
-  
-  if((sstatus & SSTATUS_SPP) == 0)
-    panic("kerneltrap: not from supervisor mode");
-  if(intr_get() != 0)
-    panic("kerneltrap: interrupts enabled");
+kerneltrap() {
+	int which_dev;
+	uint64 sepc = r_sepc();
+	uint64 sstatus = r_sstatus();
+	uint64 scause = r_scause();
 
-  if((which_dev = devintr()) == 0){
-    printf("scause %p\n", scause);
-    printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
-    panic("kerneltrap");
-  }
-  // printf("which_dev: %d\n", which_dev);
-  
-  // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2) {
-    timer_tick();
-    if(myproc() != 0 && myproc()->state == RUNNING) {
-      yield();
-    }
-  }
-  // the yield() may have caused some traps to occur,
-  // so restore trap registers for use by kernelvec.S's sepc instruction.
-  w_sepc(sepc);
-  w_sstatus(sstatus);
+	if (0 == (sstatus & SSTATUS_SPP)) 
+		panic("kerneltrap: not from supervisor mode");
+	if (0 != intr_get()) 
+		panic("kerneltrap: interrupts enabled");
+
+	which_dev = devintr();
+	if (0 == which_dev) {
+		// unknown interrupts 
+		printf("scause %p\n", scause);
+		printf("sepc = %p stval = %p\n", r_sepc(), r_stval());
+		panic("kerneltrap");
+	}
+	else if (2 == which_dev) {
+		// if timer interrupts 
+		timer_tick();
+		if (myproc() && RUNNING == myproc()->state) 
+			yield();
+	}
+
+	// the yield() may have caused some traps to occur, 
+	// so restore trap registers for use by kernelvec.S's sepc instruction. 
+	w_sepc(sepc);
+	w_sstatus(sstatus);
 }
 
 void
@@ -196,22 +194,18 @@ devintr()
      (scause & 0xff) == 9){
     // this is a supervisor external interrupt, via PLIC.
 
-    // irq indicates which device interrupted.
-    #ifdef QEMU
-    // int irq = plic_claim();
-    // if(irq == UART0_IRQ){
-    //   uartintr();
-    // } else if(irq == VIRTIO0_IRQ){
-    //   virtio_disk_intr();
-    // } else if(irq){
-    //   printf("unexpected interrupt irq=%d\n", irq);
-    // }
-    // // the PLIC allows each device to raise at most one
-    // // interrupt at a time; tell the PLIC the device is
-    // // now allowed to interrupt again.
-    // if(irq)
-    //   plic_complete(irq);
-    #endif
+	#ifdef QEMU 
+	// irq indicates which device interrupted. 
+	int irq = plic_claim();
+	if (VIRTIO0_IRQ == irq) {
+		printf("A disk intr\n");
+		//disk_intr();
+		panic("somehow it happens!");
+	}
+	else printf("unexpected interrupt irq = %d\n", irq);
+
+	if (irq) plic_complete(irq);
+	#endif 
 
     return 1;
   } 

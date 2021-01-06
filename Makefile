@@ -1,4 +1,5 @@
-platform	:= k210
+#platform	:= k210
+platform := qemu
 K=kernel
 U=xv6-user
 T=target
@@ -10,45 +11,47 @@ else
 OBJS += $K/entry_qemu.o
 endif
 
+# here only includes modules that has to do with disk I/O
 OBJS += \
-  $K/printf.o \
-  $K/kalloc.o \
-  $K/spinlock.o \
-  $K/string.o \
-  $K/main.o \
-  $K/vm.o \
-  $K/proc.o \
-  $K/swtch.o \
-  $K/trampoline.o \
-  $K/trap.o \
-  $K/syscall.o \
-  $K/sysproc.o \
-  $K/bio.o \
-  $K/fs.o \
-  $K/log.o \
-  $K/sleeplock.o \
-  $K/file.o \
-  $K/pipe.o \
-  $K/exec.o \
-  $K/sysfile.o \
-  $K/kernelvec.o \
-  $K/timer.o \
-  $K/logo.o \
-  $K/test.o \
+	$K/printf.o \
+	$K/kalloc.o \
+	$K/spinlock.o \
+	$K/string.o \
+	$K/main.o \
+	$K/vm.o \
+	$K/proc.o \
+	$K/swtch.o \
+	$K/trampoline.o \
+	$K/trap.o \
+	$K/syscall.o \
+	$K/sysproc.o \
+	$K/fs.o \
+	$K/bio.o \
+	$K/log.o \
+	$K/sleeplock.o \
+	$K/file.o \
+	$K/pipe.o \
+	$K/exec.o \
+	$K/sysfile.o \
+	$K/kernelvec.o \
+	$K/timer.o \
+	$K/logo.o \
+	$K/fat32.o \
+	$K/test.o 
 
-ifeq ($(platform), k210)
+ifeq ($(platform), k210) 
 OBJS += \
-  $K/spi.o \
-  $K/gpiohs.o \
-  $K/fpioa.o \
-  $K/utils.o \
-  $K/sdcard.o \
-
-else
+	$K/spi.o \
+	$K/gpiohs.o \
+	$K/fpioa.o \
+	$K/utils.o \
+	$K/disk_sd.o 
+else 
 OBJS += \
-  $K/virtio_disk.o \
-
+	$K/disk_virtio.o \
+	$K/plic.o 
 endif
+
 
 QEMU = qemu-system-riscv64
 
@@ -58,7 +61,7 @@ else
 RUSTSBI = ./bootloader/SBI/sbi-qemu
 endif
 
-TOOLPREFIX	:= riscv64-unknown-elf-
+TOOLPREFIX	:= riscv64-linux-gnu-
 CC = $(TOOLPREFIX)gcc
 AS = $(TOOLPREFIX)gas
 LD = $(TOOLPREFIX)ld
@@ -115,6 +118,12 @@ CPUS := 2
 endif
 
 QEMUOPTS = -machine virt -bios $(RUSTSBI) -kernel $T/kernel -m 128M -smp $(CPUS) -nographic
+
+# import virtual disk image 
+QEMUOPTS += -drive file=fs.img,if=none,format=raw,id=x0 
+QEMUOPTS += -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
+
+#QEMUOPTS += -monitor pty
 
 run: build
 ifeq ($(platform), k210)
@@ -204,7 +213,7 @@ clean:
 	*/*.o */*.d */*.asm */*.sym \
 	$T/* \
 	$U/initcode $U/initcode.out \
-	$K/kernel fs.img \
+	$K/kernel \
 	mkfs/mkfs .gdbinit \
         $U/usys.S \
 	$(UPROGS)

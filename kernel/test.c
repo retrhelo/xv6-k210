@@ -1,6 +1,5 @@
 // test implemetation
 
-
 #include "include/types.h"
 #include "include/param.h"
 #include "include/memlayout.h"
@@ -10,6 +9,8 @@
 #include "include/defs.h"
 #include "include/sbi.h"
 #include "include/sdcard.h"
+
+#include "include/string.h"
 
 extern char etext[];
 extern struct proc *initproc;
@@ -74,37 +75,44 @@ void test_vm(unsigned long hart_id) {
   printf("[test_vm](walkaddr) va: %p, pa: %p\n", PGSIZE - 1, walkaddr(test_pagetable, PGSIZE - 1) + (PGSIZE - 1) % PGSIZE);
 }
 
-#ifndef QEMU
-void test_sdcard() {
-  uint8 *buffer = kalloc();
-  uint8 *pre_buffer = kalloc();
-  memset(buffer, 0, sizeof(buffer));
-  if(sd_read_sector(pre_buffer, 0, sizeof(pre_buffer))) {
-      printf("[test_sdcard]SD card read sector err\n");
-  } else {
-      printf("[test_sdcard]SD card read sector succeed\n");
-  }
-  printf("[test_sdcard]Buffer: %s\n", buffer);
-  memmove(buffer, "Hello,sdcard", sizeof("Hello,sdcard"));
-  printf("[test_sdcard]Buffer: %s\n", buffer);
-  if(sd_write_sector(buffer, 0, sizeof(buffer))) {
-      printf("[test_sdcard]SD card write sector err\n");
-  } else {
-      printf("[test_sdcard]SD card write sector succeed\n");
-  }
-  memset(buffer, 0, sizeof(buffer));
-  if(sd_read_sector(buffer, 0, sizeof(buffer))) {
-      printf("[test_sdcard]SD card read sector err\n");
-  } else {
-      printf("[test_sdcard]SD card read sector succeed\n");
-  }
-  printf("[test_sdcard]Buffer: %s\n", buffer);
-  if(sd_write_sector(pre_buffer, 0, sizeof(pre_buffer))) {
-      printf("[test_sdcard]SD card recover err\n");
-  } else {
-      printf("[test_sdcard]SD card recover succeed\n");
-  }
-  kfree(buffer);
-  kfree(pre_buffer);
+#include "include/fat32.h"
+#include "include/string.h"
+
+void fat32_test(char *path) {
+	wchar wpath[FAT32_MAX_FILENAME];
+
+	wnstr(wpath, (uchar const*)path, FAT32_MAX_FILENAME);
+
+	printf("path: %ls\n", wpath);
+	
+	// test above first 
+	//while (1) ;
+
+	struct dir_entry *entry = get_entry(wpath);
+	if (entry) {
+		printf("filename: %ls\n", wpath);
+		printf("\tsize: %u\n", entry->file_size);
+		printf("\tcluster: %u\n", entry->first_clus);
+
+		printf("\t: %u\n", entry->create_date);
+		printf("\t: %u\n", entry->create_time);
+		printf("\t: %u\n", entry->create_time_tenth);
+		printf("\t: %u\n", entry->last_access_date);
+		printf("\t: %u\n", entry->last_write_date);
+		printf("\t: %u\n", entry->last_write_time);
+	}
+	else {
+		printf("file \"%ls\" not found!\n", wpath);
+	}
+
+	if (entry) {
+		uint8 buf[1025];
+
+		memset(buf, 0, 1025);
+		int ret = entry_read_data(entry->first_clus, 0, (uint8*)buf, 1024);
+		buf[1024] = 0;
+
+		printf("data read:\n%s\n", buf);
+		printf("data bytes: %d\n", ret);
+	}
 }
-#endif

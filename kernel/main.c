@@ -1,77 +1,80 @@
-// Copyright (c) 2006-2019 Frans Kaashoek, Robert Morris, Russ Cox,
-//                         Massachusetts Institute of Technology
+// A test file modified from old main.c(now as main.back.c) 
 
-#include "include/types.h"
-#include "include/param.h"
-#include "include/memlayout.h"
-#include "include/riscv.h"
-#include "include/defs.h"
-#include "include/sbi.h"
-#include "include/sdcard.h"
-#include "include/fpioa.h"
+#include "include/bio.h"
+#include "include/disk.h"
+
+#include "include/fat32.h"
 
 static inline void inithartid(unsigned long hartid) {
-  asm volatile("mv tp, %0" : : "r" (hartid & 0x1));
+	asm volatile("mv tp, %0" : : "r"(hartid & 0x01));
 }
 
-volatile static int started = 0;
+void printfinit(void);
+void printf(char*, ...);
+void print_logo(void);
 
-void
-main(unsigned long hartid, unsigned long dtb_pa)
-{
-  inithartid(hartid);
-  
-  if (hartid == 0) {
-    printfinit();   // init a lock for printf 
-    print_logo();
-    printf("hart %d enter main()...\n", hartid);
-    kinit();         // physical page allocator
-    kvminit();       // create kernel page table
-    kvminithart();   // turn on paging
-    trapinit();      // trap vectors
-    trapinithart();  // install kernel trap vector
-    timerinit();     // set up timer interrupt handler
-    procinit();
-    #ifndef QEMU
-    device_init(dtb_pa, hartid);
-    fpioa_pin_init();
-    sdcard_init();
-    #endif
-    //plicinit();      // set up interrupt controller
-    //plicinithart();  // ask PLIC for device interrupts
-    // binit();         // buffer cache
-    // iinit();         // inode cache
-    // fileinit();      // file table
-    // userinit();      // first user process
-    test_proc_init(8);   // test porc init
+void plicinit(void);
+void plicinithart(void);
 
-    test_kalloc();    // test kalloc
-    test_vm(hartid);       // test kernel pagetable
-    #ifndef QEMU
-    test_sdcard();
-    #endif
+void trapinit(void);
+void trapinithart(void);
 
-    printf("hart 0 init done\n");
-    for(int i = 1; i < NCPU; i++) {
-      unsigned long mask = 1 << i;
-      sbi_send_ipi(&mask);
-    }
-    __sync_synchronize();
-    started = 1;
-  } else
-  {
-    // hart 1
-    while (started == 0)
-      ;
-    __sync_synchronize();
-    printfinit();   // init a lock for printf 
-    printf("hart %d enter main()...\n", hartid);
-    kvminithart();
-    trapinithart();
-    #ifndef QEMU
-    device_init(dtb_pa, hartid);
-    #endif
-    printf("hart 1 init done\n");
-  }
-  scheduler();
+void timerinit(void);
+
+void panic(char*) __attribute__((noreturn));
+
+void disk_init(void);
+
+void *memset(void*, int, uint);
+
+void 
+test_disk(void) {
+	struct buf *b = bread(0, 0);
+
+	memset(b, 0, sizeof(struct buf));
+
+	memset(b->data, 'X', BSIZE);
+	disk_write(b);
+	printf("disk write finish\n");
+
+	memset(b->data, 0, BSIZE);
+	disk_read(b);
+
+	for (int i = 0; i < BSIZE; i ++) {
+		if (i % 16 == 0) printf("\n");
+		printf("%c", b->data[i]);
+	}
+
+	printf("test_disk");
+}
+
+void 
+main(unsigned long hartid, unsigned long dtb_pa) {
+	inithartid(hartid);
+
+	if (0 == hartid) {
+		printfinit();	// init a lock for printf 
+		print_logo();
+		printf("hart %d enter main()...\n", hartid);
+
+		trapinit();			// trap vectors 
+		trapinithart();		// install kernel vector 
+		timerinit();		// set up timer interrupt handler 
+
+		#ifndef QEMU 
+		panic("sd card no yet support");
+		#endif 
+
+		disk_init();			// init disk, could be virtio_disk or a real sd card 
+		fat32_init();			// init fat32 fs 
+
+		extern void fat32_test(char *path);
+		fat32_test("/README");
+
+		while (1);
+	}
+	else {	// disable hart 1
+		while (1) 
+			;
+	}
 }
